@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PDF Chat
 
-## Getting Started
+Implementation for the [DESelect Technical Assessment](docs/ASSESSMENT.md).
 
-First, run the development server:
+## Features
+
+* **Ingest a PDF**: split, embed, store chunks in a local vector DB
+* **Chat with AI**: web UI and AI integration
+* **RAG**: similarity search per question, topic guarded prompt
+* **Prompts & answers saved**: in local DB
+
+## Tech stack
+
+* Web & API: **Next.js 14**, React 19, Tailwind
+* LLM and Chat UI: OpenAI **gpt-4o-mini** via **Vercel AI SDK**
+* PDF extraction: **Poppler** via `pdf-text-extract`
+* Chunking: **RecursiveCharacterTextSplitter** via LangChain
+* Embeddings: OpenAI **text-embedding-3-small** via LangChain
+* Vector DB: **Chroma 0.6** with Docker
+* Persistence: **Prisma + SQLite**
+
+## PDF parsing
+
+`pdf-parse` (also used by LangChain’s PDFLoader) can't seem to parse this marketing PDF (results in 600 new lines), so
+Poppler's `pdftotext` is used instead.
+
+## Setup instructions
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# 1) clone
+git clone https://github.com/bortinmo/pdf-chat.git
+cd pdf-chat
+
+# 2) install deps (prisma client is generated postinstall)
+pnpm install
+
+# 3) install Poppler
+brew install poppler
+# or other applicable installation methods
+
+# 4) add secrets (OpenAI key)
+cp .env.example .env
+#   OPENAI_API_KEY=sk-...
+#   CHROMA_URL=http://localhost:8000
+#   DATABASE_URL="file:./dev.db"
+
+# 5) create the schema
+pnpm dlx prisma migrate dev --name init
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Running Instructions
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# 1) run Chroma
+docker run -d --name chroma \
+  -p 8000:8000 \
+  -e CHROMA_SERVER_ENABLE_TENANTS=true \
+  ghcr.io/chroma-core/chroma:0.6.3
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# 2) process the PDF
+pnpm ingest
 
-## Learn More
+# 3) run the app
+pnpm dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Chunking Strategy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This overview from LangChain mentions four splitting approaches:  
+https://js.langchain.com/docs/concepts/text_splitters/
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Length-based
+- Text-structure based
+- Document-structure based
+- Semantic meaning based
 
-## Deploy on Vercel
+Text-structured based splitting is used (RecursiveCharacterTextSplitter) in the assessment.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The pick could be influenced by aspects of the real world use-case, for example:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- If we need to process only a low number of PDFs, that are queried a lot in chats, then we could ask an LLM directly
+  to extract the content and split it, as the cost for that would not be high. This could likely result in the highest
+  quality extraction and chunks.
+- If we need to process a high number of PDFs, and the cost of using LLMs directly is
+  prohibitive, then we could use an algorithmic approach (like the one used here), and test and adjust it to best fit
+  the PDFs we serve.
+
+(And I assume the whole use-case of chatting with documents, or knowledge bases in general, may have already been
+implemented by the primary AI providers
+themselves via their cloud services, APIs and SDKs - I haven't checked it. The downside of using them directly over
+open-source ecosystems (like LangChain and underlying providers) could be potential vendor lock-in, depending on the
+details and APIs as well.)
+
+## Project Structure
+
+```bash
+pdf-chat/
+├─ src/
+│  ├─ app/                 # Next.js routes and UI (using App Router)
+│  │   ├─ api/             # /api/chat, /api/history
+│  │   └─ page.tsx         # chat front-end
+│  └─ lib/
+│      └─ rag/             # RAG pipeline
+├─ prisma/                 # schema.prisma and SQL migrations
+├─ scripts/                # CLI scripts (not bundled)
+│  └─ ingest.ts            # PDF processing
+└─ docs/marketing-ops.pdf  # source PDF (not exposed)
+```
+
+## Notes
+
+### AI use
+
+I used AIs extensively for the assignment, namely OpenAI o3 and Gemini 2.5 via the web interfaces, Claude Code through
+CLI, and JetBrains Junie in WebStorm.
+This is because most of the technologies involved here are new to me (TypeScript, Next.js, Prisma,
+LangChain), and so the AIs helped a lot to quickly put things together and discuss things, which would have otherwise
+taken much more time.  
+And also because I think using AI is part of the development workflow now.  
+But this also resulted in bigger chunks of AI-generated code with tech I am new too, and less double-checking and deep
+involvement from me, than what I would normally do. So I overall see the repo more as a quick proof of concept.
+
+### LangChain for VectorStore and RAG pipeline
+
+I realized only late that LangChain provides VectorStore components, so the custom interface and implementation could
+have been replaced with simply using LangChain for that too. And maybe the RagService orchestration layer as well.
+
+## License
+
+MIT
