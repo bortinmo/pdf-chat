@@ -2,7 +2,7 @@ import { openai } from '@ai-sdk/openai'
 import { streamText, StreamTextResult, ToolSet } from 'ai'
 import { prisma } from '@/lib/app-db/prisma'
 import { createSystemPrompt } from '@/lib/prompts/system.prompt'
-import { createRagService, RagService } from '@/lib/rag/rag.service'
+import { RagService } from '@/lib/rag/rag.service'
 
 /**
  * Interface for the Chat service component.
@@ -79,6 +79,6 @@ export class ChatServiceImpl implements ChatService {
 /**
  * Factory function to create a ChatService instance
  */
-export function createChatService(): ChatService {
-  return new ChatServiceImpl(createRagService())
+export function createChatService(ragService: RagService): ChatService {
+  return new ChatServiceImpl(ragService)
 }
